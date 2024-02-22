@@ -279,6 +279,7 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 		return h.upgradeClient.Update(toUpdate)
 	}
 
+	logrus.Infof("testing upgrade nodes %s/%s: (%v, %v)", upgrade.Namespace, upgrade.Name, harvesterv1.SystemServicesUpgraded.IsTrue(upgrade), harvesterv1.NodesUpgraded.GetStatus(upgrade))
 	if harvesterv1.SystemServicesUpgraded.IsTrue(upgrade) && harvesterv1.NodesUpgraded.GetStatus(upgrade) == "" {
 		logrus.Infof("upgrading nodes %s/%s", upgrade.Namespace, upgrade.Name)
 		info, err := getCachedRepoInfo(upgrade)
