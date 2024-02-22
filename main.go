@@ -79,7 +79,7 @@ func main() {
 }
 
 func run(commonOptions *config.CommonOptions, options config.Options) error {
-	logrus.Info("Starting controller")
+	logrus.Info("Starting controller: custom gage build")
 	ctx := signals.SetupSignalContext()
 
 	kubeConfig, err := server.GetConfig(commonOptions.KubeConfig)
