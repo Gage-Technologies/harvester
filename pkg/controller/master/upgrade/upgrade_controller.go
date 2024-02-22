@@ -37,7 +37,7 @@ var (
 )
 
 const (
-	//system upgrade controller is deployed in cattle-system namespace
+	// system upgrade controller is deployed in cattle-system namespace
 	upgradeNamespace               = "harvester-system"
 	sucNamespace                   = "cattle-system"
 	upgradeServiceAccount          = "system-upgrade-controller"
@@ -183,11 +183,17 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 
 	// only run further operations for latest upgrade
 	if upgrade.Labels == nil || upgrade.Labels[harvesterLatestUpgradeLabel] != "true" {
+		logrus.Infof("skipping old upgrade %s/%s", upgrade.Namespace, upgrade.Name)
 		return upgrade, nil
 	}
 
 	// clean upgrade repo VMs and images if a upgrade succeeds or fails.
 	if harvesterv1.UpgradeCompleted.IsTrue(upgrade) || harvesterv1.UpgradeCompleted.IsFalse(upgrade) {
+		s := "completed"
+		if harvesterv1.UpgradeCompleted.IsFalse(upgrade) {
+			s = "failed"
+		}
+		logrus.Infof("handling %s upgrade %s/%s", s, upgrade.Namespace, upgrade.Name)
 		return nil, h.cleanup(upgrade, harvesterv1.UpgradeCompleted.IsTrue(upgrade))
 	}
 
@@ -204,6 +210,7 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 	}
 
 	if harvesterv1.RepoProvisioned.IsTrue(upgrade) && harvesterv1.NodesPrepared.GetStatus(upgrade) == "" {
+		logrus.Infof("prepping nodes %s/%s", upgrade.Namespace, upgrade.Name)
 		toUpdate := upgrade.DeepCopy()
 		singleNode, err := h.isSingleNodeCluster()
 		if err != nil {
@@ -255,6 +262,7 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 	}
 
 	if harvesterv1.NodesPrepared.IsTrue(upgrade) && harvesterv1.SystemServicesUpgraded.GetStatus(upgrade) == "" {
+		logrus.Infof("upgrading system services %s/%s", upgrade.Namespace, upgrade.Name)
 		toUpdate := upgrade.DeepCopy()
 		repoInfo, err := getCachedRepoInfo(upgrade)
 		if err != nil {
@@ -272,8 +280,10 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 	}
 
 	if harvesterv1.SystemServicesUpgraded.IsTrue(upgrade) && harvesterv1.NodesUpgraded.GetStatus(upgrade) == "" {
+		logrus.Infof("upgrading nodes %s/%s", upgrade.Namespace, upgrade.Name)
 		info, err := getCachedRepoInfo(upgrade)
 		if err != nil {
+			logrus.Errorf("failed to get cached repo %s/%s: %v", upgrade.Namespace, upgrade.Name, err)
 			return nil, err
 		}
 
@@ -290,6 +300,7 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 			// skip if the value is already larger than extendedReplicaReplenishmentWaitInterval
 			replicaReplenishmentWaitIntervalValue, err := h.getReplicaReplenishmentValue()
 			if err != nil {
+				logrus.Errorf("failed to get replica replenishment %s/%s: %v", upgrade.Namespace, upgrade.Name, err)
 				return nil, err
 			}
 			if replicaReplenishmentWaitIntervalValue < extendedReplicaReplenishmentWaitInterval {
@@ -297,6 +308,7 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 					return nil, err
 				}
 				if err := h.setReplicaReplenishmentValue(extendedReplicaReplenishmentWaitInterval); err != nil {
+					logrus.Errorf("failed to set replica replenishment %s/%s: %v", upgrade.Namespace, upgrade.Name, err)
 					return nil, err
 				}
 			}
@@ -304,15 +316,19 @@ func (h *upgradeHandler) OnChanged(key string, upgrade *harvesterv1.Upgrade) (*h
 			// go with RKE2 pre-drain/post-drain hooks
 			logrus.Infof("Start upgrading Kubernetes runtime to %s", info.Release.Kubernetes)
 			if err := h.upgradeKubernetes(info.Release.Kubernetes); err != nil {
+				logrus.Errorf("failed to upgrade k8s %s/%s: %v", upgrade.Namespace, upgrade.Name, err)
 				setUpgradeCompletedCondition(toUpdate, StateFailed, corev1.ConditionFalse, err.Error(), "")
 				return h.upgradeClient.Update(toUpdate)
 			}
 		}
 
+		logrus.Infof("marking current state for upgrading nodes %s/%s", upgrade.Namespace, upgrade.Name)
 		toUpdate.Labels[upgradeStateLabel] = StateUpgradingNodes
 		harvesterv1.NodesUpgraded.CreateUnknownIfNotExists(toUpdate)
 		return h.upgradeClient.Update(toUpdate)
 	}
+
+	logrus.Infof("no conditions met %s/%s", upgrade.Namespace, upgrade.Name)
 
 	return upgrade, nil
 }
