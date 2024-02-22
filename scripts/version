@@ -14,7 +14,7 @@ COMMIT_BRANCH_FORMATTED=$(echo "${COMMIT_BRANCH}" | sed -E 's/[^a-zA-Z0-9]+/-/g'
 GIT_TAG=$(git tag -l --contains HEAD | head -n 1)
 
 if [[ -z "$DIRTY" && -n "$GIT_TAG" ]]; then
-    VERSION=$GIT_TAG
+    VERSION=${GIT_TAG%-gage}
     # Search for minimum upgradable version.
     # If the release does not come with a corresponding minimum upgradable version, the build will error out.
     MIN_UPGRADABLE_VERSION=$(yq -e e ".versions | map(select(.name == \"$VERSION\")) | .[0].minUpgradableVersion" "${PACKAGE_DIR}"/upgrade-matrix.yaml)
